@@ -1,0 +1,622 @@
+/* lab.bingo status. A sober page under a band of sea: the swell of that sea
+   is the state of the lab, everything below it is a plain record. Colours and
+   the mascot are shared with the other lab.bingo applications; the Red Hat
+   families are those of the login page, the other public face of the lab. */
+
+:root {
+  --ground: #f3f6fc;
+  --surface: #ffffff;
+  --ink: #111730;
+  --ink-soft: #586079;
+  --line: #d5dcec;
+  --sea: #1443d6;
+  --sea-deep: #0a2480;
+  --navy: #0b2a94;
+  --mint: #8af2bf;
+  --link: #1443d6;
+  --fair: #7f9df0;
+  --ok: #0a8457;
+  --warn: #a85f00;
+  --down: #c81e45;
+  --unknown: #5d6b8f;
+  --display: 'Red Hat Display Variable', ui-sans-serif, system-ui, sans-serif;
+  --body: 'Red Hat Text Variable', ui-sans-serif, system-ui, sans-serif;
+  --measure: 60rem;
+  --gutter: clamp(1.25rem, 5vw, 3rem);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #060f2b;
+    --surface: #0c1a45;
+    --ink: #eaefff;
+    --ink-soft: #a3b3df;
+    --line: #20327a;
+    --sea: #1238b8;
+    --sea-deep: #081c66;
+    --link: #9db6ff;
+    --fair: #4a6fdc;
+    --ok: #46dc95;
+    --warn: #ffbe5c;
+    --down: #ff7d97;
+    --unknown: #a3b3df;
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 1rem/1.5 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+h1,
+h2,
+h3,
+p,
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+}
+ul,
+ol {
+  list-style: none;
+}
+a {
+  color: inherit;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--link) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* --- The sea ------------------------------------------------------------- */
+
+.sea {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 0 var(--gutter);
+  background: linear-gradient(170deg, var(--sea) 30%, var(--sea-deep) 100%);
+  color: #fff;
+}
+/* Sea-chart grid and compass rose, faint enough to be found only when looked for. */
+.sea::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.12;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' fill='none' stroke='%23fff'%3E%3Ccircle cx='100' cy='100' r='72' stroke-width='1.5'/%3E%3Ccircle cx='100' cy='100' r='60' stroke-dasharray='1 5.28'/%3E%3Cpath d='M100 4v192M4 100h192M32 32l136 136M168 32 32 168' stroke-width='.6'/%3E%3Cpath d='M100 24l10 66 66 10-66 10-10 66-10-66-66-10 66-10z' fill='%23fff' stroke='none'/%3E%3C/svg%3E")
+      right -4rem top 42% / 22rem 22rem no-repeat,
+    radial-gradient(#fff 1px, transparent 1.6px) 0 0 / 1.75rem 1.75rem;
+}
+.sea :focus-visible {
+  outline-color: #fff;
+}
+.sea-top,
+.sea-body {
+  max-width: var(--measure);
+  margin: 0 auto;
+}
+.sea-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem 0;
+}
+.lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font: 800 1.25rem/1 var(--display);
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.lockup-kind {
+  font-weight: 500;
+  opacity: 0.8;
+}
+.logo {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+}
+.logo-tile {
+  fill: rgb(255 255 255 / 0.14);
+}
+.logo-trace {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.logo-node {
+  fill: var(--mint);
+}
+.lang {
+  padding: 0.45rem 1rem;
+  border: 1px solid rgb(255 255 255 / 0.4);
+  border-radius: 999px;
+  background: none;
+  font-weight: 500;
+}
+.lang:hover {
+  background: rgb(255 255 255 / 0.14);
+}
+.sea-body {
+  padding: clamp(2rem, 7vw, 4.5rem) 0 clamp(5.5rem, 11vw, 8rem);
+}
+.sea-body h1 {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35em;
+  max-width: 18ch;
+  font: 800 clamp(2.125rem, 6.2vw, 4.25rem) / 1.02 var(--display);
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.sea-body h1 .glyph {
+  width: 0.78em;
+  height: 0.78em;
+  margin-top: 0.13em;
+}
+.sea-body p {
+  margin-top: 1.1rem;
+  max-width: 44ch;
+  color: rgb(255 255 255 / 0.82);
+  font-size: 1.0625rem;
+}
+
+.swell {
+  position: absolute;
+  inset: auto 0 -1px 0;
+  width: 100%;
+  height: clamp(2.75rem, 6vw, 4rem);
+  display: block;
+}
+.swell-back {
+  fill: rgb(255 255 255 / 0.16);
+  animation: swell 19s linear infinite reverse;
+}
+.swell-front {
+  fill: var(--ground);
+  animation: swell 13s linear infinite;
+}
+.swell-partial .swell-front {
+  animation-duration: 9s;
+}
+.swell-down .swell-front {
+  animation-duration: 7s;
+}
+@keyframes swell {
+  to {
+    transform: translateX(-160px);
+  }
+}
+
+/* --- State --------------------------------------------------------------- */
+
+.glyph {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.glyph circle {
+  stroke: none;
+}
+.glyph-up circle {
+  fill: var(--ok);
+}
+.glyph-partial circle {
+  fill: var(--warn);
+}
+.glyph-down circle {
+  fill: var(--down);
+}
+.glyph-unknown circle {
+  fill: var(--unknown);
+}
+/* On the sea the badge is white and the mark takes the colour. */
+.sea .glyph circle {
+  fill: #fff;
+}
+.sea .glyph-up {
+  stroke: #0a8457;
+}
+.sea .glyph-partial {
+  stroke: #a85f00;
+}
+.sea .glyph-down {
+  stroke: #c81e45;
+}
+.sea .glyph-unknown {
+  stroke: #5d6b8f;
+}
+@media (prefers-color-scheme: dark) {
+  main .glyph {
+    stroke: var(--ground);
+  }
+}
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.state-up {
+  color: var(--ok);
+}
+.state-down {
+  color: var(--down);
+}
+.state-unknown {
+  color: var(--unknown);
+}
+
+/* --- Page ---------------------------------------------------------------- */
+
+main {
+  max-width: calc(var(--measure) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+section {
+  padding-top: clamp(2.5rem, 6vw, 4rem);
+}
+h2 {
+  font: 800 1.75rem/1.1 var(--display);
+  letter-spacing: -0.025em;
+}
+h3 {
+  font: 700 1.125rem/1.25 var(--display);
+  letter-spacing: -0.01em;
+}
+.lead {
+  margin-top: 0.4rem;
+  color: var(--ink-soft);
+}
+.demo {
+  margin-top: 1.5rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--ink-soft);
+}
+
+/* --- Services ------------------------------------------------------------ */
+
+.services {
+  margin-top: 0.75rem;
+}
+.service {
+  padding: 1.5rem 0 1.25rem;
+  border-top: 1px solid var(--line);
+}
+.service:first-child {
+  border-top: 0;
+}
+.service-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+  flex-wrap: wrap;
+}
+.service-name a {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+.service-name a:hover {
+  color: var(--link);
+}
+.service-name p {
+  color: var(--ink-soft);
+}
+.service-figures {
+  text-align: right;
+}
+.uptime {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One mark per day, like soundings along a route: a day without trouble
+   stands full height, an interrupted one is shorter and takes a state colour. */
+.bar-wrap {
+  position: relative;
+  margin-top: 1rem;
+}
+.bar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: end;
+  gap: 2px;
+  height: 2.5rem;
+  border-radius: 4px;
+}
+.cell {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: 2px;
+  background: var(--fair);
+}
+.cell-brief {
+  height: 68%;
+  background: var(--warn);
+}
+.cell-long {
+  height: 40%;
+  background: var(--down);
+}
+.cell-none {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.cell-at {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+.bar-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+.tip {
+  position: absolute;
+  top: 0;
+  left: clamp(10rem, calc(var(--at) * 100%), calc(100% - 10rem));
+  z-index: 2;
+  width: max-content;
+  max-width: 20rem;
+  transform: translate(-50%, calc(-100% - 0.45rem));
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--ground);
+  font-size: 0.875rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.tip strong {
+  display: block;
+}
+.tip strong::first-letter {
+  text-transform: uppercase;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+.legend li {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+.legend .cell {
+  width: 0.45rem;
+  height: 1rem;
+}
+.legend .cell-brief {
+  height: 0.68rem;
+}
+.legend .cell-long {
+  height: 0.4rem;
+}
+
+/* --- Logbook and announcements ------------------------------------------- */
+
+.log,
+.notices {
+  margin-top: 1rem;
+}
+.entry,
+.notices li {
+  display: grid;
+  grid-template-columns: 10.5rem minmax(0, 1fr) auto;
+  gap: 0.25rem 1.5rem;
+  align-items: baseline;
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+}
+.entry time,
+.notices time {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.entry div p,
+.notices p {
+  color: var(--ink-soft);
+}
+.entry-ongoing h3 {
+  color: var(--down);
+}
+.more {
+  margin-top: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-weight: 600;
+}
+.more:hover {
+  border-color: var(--link);
+  color: var(--link);
+}
+.calm {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  margin-top: 1rem;
+  color: var(--ink-soft);
+}
+.art {
+  flex: none;
+  width: 4rem;
+  height: 4rem;
+  fill: none;
+  stroke: var(--link);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.art-fill {
+  fill: color-mix(in srgb, var(--link) 14%, transparent);
+  stroke: none;
+}
+.art-accent {
+  stroke: var(--ok);
+  stroke-width: 3.5;
+}
+
+/* --- Footer and mascot ---------------------------------------------------- */
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  max-width: calc(var(--measure) + 2 * var(--gutter));
+  margin: clamp(3rem, 8vw, 5rem) auto 0;
+  padding: 1.5rem var(--gutter) 2.5rem;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+.mascot {
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+}
+.mascot-sea {
+  fill: var(--sea);
+}
+.mascot-rim {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 3;
+}
+.mascot-fur {
+  fill: #fff;
+  stroke: #fff;
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+.mascot-ink {
+  fill: #0b2a94;
+}
+.mascot-patch {
+  stroke: #0b2a94;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.mascot-strap {
+  fill: none;
+  stroke: #0b2a94;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.mascot-collar {
+  fill: none;
+  stroke: #8af2bf;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.mascot-eye {
+  transform-origin: 50px 40px;
+  animation: blink 4.8s linear infinite;
+}
+.mascot-ear {
+  transform-origin: 72px 24px;
+  animation: ear 5.5s ease-in-out infinite;
+}
+@keyframes blink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  96.5% {
+    transform: scaleY(0.08);
+  }
+}
+@keyframes ear {
+  0%,
+  80%,
+  88%,
+  100% {
+    transform: rotate(0deg);
+  }
+  84% {
+    transform: rotate(14deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swell-back,
+  .swell-front,
+  .mascot-eye,
+  .mascot-ear {
+    animation: none;
+  }
+}
+
+/* --- Phone ---------------------------------------------------------------- */
+
+@media (max-width: 40rem) {
+  .sea::before {
+    background-size: 14rem 14rem, 1.75rem 1.75rem;
+  }
+  .service-figures {
+    text-align: left;
+  }
+  .service-head {
+    flex-direction: column;
+  }
+  .entry,
+  .notices li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .entry time,
+  .notices time {
+    grid-column: 1 / -1;
+  }
+  .tip {
+    left: clamp(7rem, calc(var(--at) * 100%), calc(100% - 7rem));
+    max-width: 14rem;
+  }
+}

@@ -1,0 +1,33 @@
+# Public status page of lab.bingo. Availability is read from Gatus; this file
+# says which of its groups are public and how each service is presented.
+title: lab.bingo
+
+# Base address of the Gatus API. STATUS_GATUS overrides it.
+gatus: http://gatus.gatus.svc.cluster.local:8080
+
+# Only endpoints of these Gatus groups are recorded and shown.
+groups: [Public]
+
+interval: 60s
+days: 90
+timezone: Europe/Paris
+# Failed checks in a row before an incident is opened.
+failureThreshold: 2
+
+# Words and public address of each service; name is the Gatus endpoint name.
+services:
+  - name: Authentik
+    description: Connexion unique aux applications du lab
+    url: https://auth.lab.bingo
+  - name: Portfolio
+    description: Site public
+    url: https://www.bingops.com
+  - name: RomM
+    description: Bibliothèque de jeux
+    url: https://rom.lab.bingo
+  - name: ROMarr
+    description: Recherche de jeux
+    url: https://romarr.lab.bingo
+
+# Hand-written announcements, most recent first.
+notices: []

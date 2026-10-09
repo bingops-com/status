@@ -1,0 +1,8 @@
+/data/
+/bin/
+web/node_modules/
+web/dist/
+*.local.yaml
+.env
+# Restored from skills-lock.json; project skills written here are tracked.
+.agents/skills/frontend-design/
