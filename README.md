@@ -103,9 +103,16 @@ regarde par un hublot dans le pied de page. Le texte existe en français et en
 anglais, selon la langue du navigateur ; tout se fige si le système demande de
 réduire les animations.
 
-## Ce qui reste hors de ce dépôt
+## Déploiement
 
-Le déploiement suit le même schéma que le portail et appartient au dépôt
-`labops` : image (`docker/status`), manifestes (`apps/workloads/status`),
-volume pour `STATUS_DATA`, nom DNS et route du tunnel Cloudflare. Rien de cela
-n'existe encore.
+Le déploiement appartient au dépôt `labops` et suit le schéma du portail :
+image (`docker/status`), chart Helm (`charts/status`) et ses valeurs
+(`apps/workloads/status`), nom DNS et route
+du tunnel Cloudflare. Une modification du code poussée sur `master` demande à
+`labops` de reconstruire l'image (`.github/workflows/trigger-rebuild.yml`) ;
+la publication ouvre là-bas une pull request de déploiement.
+
+Ce déclenchement a besoin du secret de dépôt `REPO_INFRA_TOKEN`, un jeton
+limité à `bingops-com/labops` avec `Contents: read and write`, comme pour le
+portail. Sa création et sa rotation sont décrites pas à pas dans
+`docker/status/README.md` de `labops`, avec les autres prérequis.
