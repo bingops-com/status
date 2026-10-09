@@ -69,3 +69,71 @@ func TestStatusJoinsConfigAndHidesGatus(t *testing.T) {
 		t.Fatalf("POST /api/status = %d, want 405", res.Code)
 	}
 }
+
+func TestPageCarriesLinkPreview(t *testing.T) {
+	paris, err := time.LoadLocation("Europe/Paris")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 9, 20, 30, 0, 0, time.UTC)
+	rec, err := monitor.NewRecorder(monitor.Options{Days: 90, Location: paris, FailureThreshold: 2, Interval: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(at time.Time, rommUp bool) {
+		rec.Record([]monitor.Endpoint{
+			{Key: "public_authentik", Name: "Authentik", Checks: []monitor.Check{{Time: at, Up: true}}},
+			{Key: "public_romm", Name: "Rom<M>", Checks: []monitor.Check{{Time: at, Up: rommUp}}},
+		}, at)
+	}
+	read(now, true)
+	srv := &Server{
+		Config:   &config.Config{Title: "lab.bingo", Interval: time.Minute, Location: paris},
+		Recorder: rec,
+		Assets: fstest.MapFS{"index.html": {Data: []byte(`<html><head>
+    <meta name="theme-color" content="#1443D6" />
+  </head><body>page</body></html>`)}},
+		Now: func() time.Time { return now },
+	}
+	get := func(agent string) string {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("User-Agent", agent)
+		res := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(res, req)
+		return res.Body.String()
+	}
+
+	page := get("Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)")
+	for _, want := range []string{
+		`og:site_name" content="lab.bingo"`,
+		`og:title" content="🟢 Tous les services sont opérationnels"`,
+		"🟢 Authentik   🟢 Rom&lt;M&gt;\nDisponibilité sur 90 jours : 100,00 %",
+		`theme-color" content="#2FB56A"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("preview lacks %q:\n%s", want, page)
+		}
+	}
+	if page := get("Mozilla/5.0 Firefox/130.0"); !strings.Contains(page, `theme-color" content="#1443D6"`) || !strings.Contains(page, "og:title") {
+		t.Fatalf("a browser must keep the page colour and still get the preview:\n%s", page)
+	}
+
+	read(now.Add(time.Minute), false)
+	read(now.Add(2*time.Minute), false)
+	now = now.Add(2 * time.Minute)
+	page = get("Discordbot/2.0")
+	for _, want := range []string{
+		`og:title" content="🟠 1 service perturbé"`,
+		"🟢 Authentik   🔴 Rom&lt;M&gt;\nIncident en cours depuis 22:31",
+		`theme-color" content="#F0A020"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("preview lacks %q:\n%s", want, page)
+		}
+	}
+
+	now = now.Add(time.Hour)
+	if page = get("Discordbot/2.0"); !strings.Contains(page, `og:title" content="⚪ État inconnu"`) || !strings.Contains(page, "Aucune mesure récente") {
+		t.Fatalf("stale readings must not claim a state:\n%s", page)
+	}
+}

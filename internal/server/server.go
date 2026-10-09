@@ -46,11 +46,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
-	now := time.Now
-	if s.Now != nil {
-		now = s.Now
-	}
-	snap := s.Recorder.Snapshot(now())
+	snap := s.Recorder.Snapshot(s.now())
 	out := status{Title: s.Config.Title, Demo: s.Demo, Interval: int(s.Config.Interval.Seconds()), Notices: s.Config.Notices, Snapshot: snap, Services: []serviceView{}}
 	if out.Notices == nil {
 		out.Notices = []config.Notice{}
@@ -98,7 +94,7 @@ func (s *Server) static() http.Handler {
 				return
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Write(page)
+			w.Write(s.withPreview(page, r.UserAgent()))
 			return
 		}
 		r2 := r.Clone(r.Context())

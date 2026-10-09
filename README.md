@@ -81,6 +81,20 @@ Le mode démonstration n'écrit jamais dans `STATUS_DATA` et la page l'annonce.
   par jour), incidents et annonces. Mis en cache 15 s.
 - `GET /healthz` : `ok`.
 
+## Aperçu de lien
+
+Un lien vers la page collé dans Discord (ou tout service qui lit les balises
+Open Graph) affiche l'état du moment : le serveur écrit dans l'en-tête HTML un
+titre (`🟢 Tous les services sont opérationnels`, `🟠 1 service perturbé`,
+`🔴 Tous les services sont en panne`, `⚪ État inconnu`), une pastille par
+service, puis l'incident en cours ou la disponibilité moyenne. Pour le robot
+de Discord, `theme-color` prend la couleur de l'état, qui devient celle de la
+barre de l'aperçu ; les navigateurs gardent le bleu de la page.
+
+L'aperçu est en français et sans image. Discord le garde en cache : un lien
+déjà collé ne se met pas à jour, et un nouveau collage peut montrer un état
+vieux de quelques minutes à quelques heures.
+
 ## Développement
 
 ```sh
@@ -112,7 +126,8 @@ du tunnel Cloudflare. Une modification du code poussée sur `master` demande à
 `labops` de reconstruire l'image (`.github/workflows/trigger-rebuild.yml`) ;
 la publication ouvre là-bas une pull request de déploiement.
 
-Ce déclenchement a besoin du secret de dépôt `REPO_INFRA_TOKEN`, un jeton
+Ce déclenchement a besoin du secret `REPO_INFRA_TOKEN` de l'organisation
+`bingops-com`, rendu lisible par ce dépôt : un jeton
 limité à `bingops-com/labops` avec `Contents: read and write`, comme pour le
 portail. Sa création et sa rotation sont décrites pas à pas dans
 `docker/status/README.md` de `labops`, avec les autres prérequis.
