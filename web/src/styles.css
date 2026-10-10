@@ -312,6 +312,44 @@ h3 {
 
 /* --- Services ------------------------------------------------------------ */
 
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+/* The period of the bars: one control in four parts, the chosen one inked. */
+.ranges {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.ranges button {
+  padding: 0.4rem 0.9rem;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: none;
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ranges button:first-child {
+  border-left: 0;
+}
+.ranges button:hover {
+  color: var(--link);
+}
+.ranges button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--ground);
+}
+.ranges button:focus-visible {
+  outline-offset: -3px;
+}
+
 .services {
   margin-top: 0.75rem;
 }
@@ -362,6 +400,13 @@ h3 {
   gap: 2px;
   height: 2.5rem;
   border-radius: 4px;
+}
+/* A week by the hour is 168 marks: they stand closer together. */
+.bar-dense {
+  gap: 1px;
+}
+.bar-dense .cell {
+  border-radius: 1px;
 }
 .cell {
   display: block;

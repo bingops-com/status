@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,6 +95,45 @@ func TestSnapshotUptimeAndHistory(t *testing.T) {
 	}
 	if got := *s.Uptime["7"]; got != 0.75 {
 		t.Fatalf("7-day uptime = %v, want 0.75", got)
+	}
+}
+
+func TestSnapshotHours(t *testing.T) {
+	r := recorder(t, "")
+	now := time.Date(2026, 10, 9, 12, 30, 0, 0, time.UTC)
+	r.Record([]Endpoint{{Key: "a", Name: "A", Checks: checks(now.Add(-8*24*time.Hour), "--")}}, now)
+	r.Record([]Endpoint{{Key: "a", Name: "A", Checks: checks(now.Add(-48*time.Hour), "+---")}}, now)
+	r.Record([]Endpoint{{Key: "a", Name: "A", Checks: checks(now.Add(-62*time.Minute), "++++")}}, now)
+	s := r.Snapshot(now).Services[0]
+	if len(s.Hours) != 7*24 {
+		t.Fatalf("got %d hours, want a week", len(s.Hours))
+	}
+	last, before, old := s.Hours[167], s.Hours[166], s.Hours[167-48]
+	if !last.Time.Equal(now.Truncate(time.Hour)) || last.Uptime != nil {
+		t.Fatalf("the current hour has no check yet: %+v", last)
+	}
+	if *before.Uptime != 1 || *old.Uptime != 0.25 || old.DownMin != 3 {
+		t.Fatalf("unexpected hours: %+v %+v", old, before)
+	}
+	if got := *s.Uptime["1"]; got != 1 {
+		t.Fatalf("24-hour uptime = %v, want 1", got)
+	}
+	if len(r.st.Services["a"].Hours) != 2 {
+		t.Fatalf("hours older than a week survived: %+v", r.st.Services["a"].Hours)
+	}
+}
+
+func TestHistoryWithoutHoursStillRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	old := `{"services":{"a":{"name":"A","days":{}}},"incidents":[],"nextId":1,"order":["a"]}`
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := recorder(t, path)
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	r.Record([]Endpoint{{Key: "a", Name: "A", Checks: checks(now, "+")}}, now)
+	if got := r.Snapshot(now).Services[0].Uptime["1"]; got == nil || *got != 1 {
+		t.Fatalf("a history written before hours were kept must go on: %v", got)
 	}
 }
 

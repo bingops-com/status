@@ -94,7 +94,7 @@ func (s *Server) static() http.Handler {
 				return
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Write(s.withPreview(page, r.UserAgent()))
+			w.Write(s.withPreview(page, r.UserAgent(), r.URL.Query().Get("range")))
 			return
 		}
 		r2 := r.Clone(r.Context())

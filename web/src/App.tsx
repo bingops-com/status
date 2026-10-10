@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { copy, initialLang, rememberLang, type Copy, type Lang } from './i18n';
+import { copy, initialLang, rememberLang, type Copy, type Lang, type Range } from './i18n';
 
 type ServiceState = 'up' | 'down' | 'unknown';
 type Overall = 'ok' | 'partial' | 'down' | 'unknown';
 
 interface Day {
   date: string;
+  uptime: number | null;
+  downMin: number;
+}
+interface Hour {
+  time: string;
   uptime: number | null;
   downMin: number;
 }
@@ -18,6 +23,7 @@ interface Service {
   responseMs: number;
   uptime: Record<string, number | null>;
   history: Day[];
+  hours: Hour[];
 }
 interface Incident {
   id: number;
@@ -43,15 +49,72 @@ interface Status {
   notices: Notice[];
 }
 
-// A day counts as interrupted from two minutes without an answer: a single
+// One mark of a bar: an hour, a few hours, a day or a few days.
+interface Mark {
+  key: string;
+  from: Date;
+  to: Date;
+  hourly: boolean;
+  uptime: number | null;
+  downMin: number;
+}
+
+// A mark counts as interrupted from two minutes without an answer: a single
 // failed check is not worth a mark. Half an hour separates brief from long.
 const NOTICEABLE = 2;
 const LONG = 30;
 
-function dayKind(d: Day): 'none' | 'ok' | 'brief' | 'long' {
-  if (d.uptime === null) return 'none';
-  if (d.downMin < NOTICEABLE) return 'ok';
-  return d.downMin < LONG ? 'brief' : 'long';
+function markKind(m: Mark): 'none' | 'ok' | 'brief' | 'long' {
+  if (m.uptime === null) return 'none';
+  if (m.downMin < NOTICEABLE) return 'ok';
+  return m.downMin < LONG ? 'brief' : 'long';
+}
+
+// The period shown, kept in the address so that a shared link opens on it
+// and previews it. The week is the default, as in the server's preview.
+const DEFAULT_RANGE: Range = 'week';
+const UPTIME_KEY: Record<Range, string> = { day: '1', week: '7', month: '30', all: 'all' };
+
+function initialRange(): Range {
+  const asked = new URLSearchParams(window.location.search).get('range');
+  return asked === 'day' || asked === 'week' || asked === 'month' || asked === 'all' ? asked : DEFAULT_RANGE;
+}
+
+function rememberRange(range: Range) {
+  window.history.replaceState(null, '', range === DEFAULT_RANGE ? window.location.pathname : `?range=${range}`);
+}
+
+// Merges marks by groups of `size`, so that a long period fits a phone.
+function grouped(marks: Mark[], size: number): Mark[] {
+  if (size <= 1) return marks;
+  const out: Mark[] = [];
+  for (let end = marks.length; end > 0; end -= size) {
+    const group = marks.slice(Math.max(0, end - size), end);
+    const measured = group.filter((m) => m.uptime !== null);
+    out.unshift({
+      ...group[0],
+      to: group[group.length - 1].to,
+      uptime: measured.length ? measured.reduce((sum, m) => sum + (m.uptime ?? 0), 0) / measured.length : null,
+      downMin: measured.reduce((sum, m) => sum + m.downMin, 0),
+    });
+  }
+  return out;
+}
+
+// The day and the week are read hour by hour, longer periods day by day.
+function marksOf(service: Service, range: Range, narrow: boolean): Mark[] {
+  if (range === 'day' || range === 'week') {
+    const hours = service.hours.slice(range === 'day' ? -24 : 0).map((h) => {
+      const from = new Date(h.time);
+      return { key: h.time, from, to: new Date(from.getTime() + 3_600_000), hourly: true, uptime: h.uptime, downMin: h.downMin };
+    });
+    return grouped(hours, range === 'week' && narrow ? 4 : 1);
+  }
+  const days = service.history.slice(range === 'month' ? -30 : 0).map((d) => {
+    const at = new Date(`${d.date}T12:00:00`);
+    return { key: d.date, from: at, to: at, hourly: false, uptime: d.uptime, downMin: d.downMin };
+  });
+  return grouped(days, narrow && days.length > 45 ? 2 : 1);
 }
 
 function useFormat(lang: Lang, t: Copy) {
@@ -60,11 +123,12 @@ function useFormat(lang: Lang, t: Copy) {
     const day = new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' });
     const shortDay = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'long', year: 'numeric' });
     const time = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' });
+    const hours = new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
     const relative = new Intl.RelativeTimeFormat(lang, { numeric: 'always' });
     return {
       // Never rounds an imperfect figure up to 100 %.
       percent: (ratio: number) => pct.format(ratio < 1 ? Math.min(ratio, 0.9999) : 1),
-      day: (date: string) => day.format(new Date(`${date}T12:00:00`)),
+      mark: (m: Mark) => (m.hourly ? hours.formatRange(m.from, m.to) : m.from === m.to ? day.format(m.from) : day.formatRange(m.from, m.to)),
       date: (iso: string) => shortDay.format(new Date(iso)),
       time: (iso: string) => time.format(new Date(iso)),
       ago: (iso: string, now: number) => {
@@ -178,48 +242,49 @@ function CalmSea() {
   );
 }
 
-function Bar({ service, days, t, f }: { service: Service; days: Day[]; t: Copy; f: Format }) {
+function Bar({ service, marks, range, days, t, f }: { service: Service; marks: Mark[]; range: Range; days: number; t: Copy; f: Format }) {
   const [at, setAt] = useState<number | null>(null);
-  const bad = days.filter((d) => ['brief', 'long'].includes(dayKind(d))).length;
-  const day = at === null ? null : days[at];
+  const bad = marks.filter((m) => ['brief', 'long'].includes(markKind(m))).length;
+  const mark = at === null ? null : marks[at];
   const move = (e: React.KeyboardEvent) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
-    setAt((i) => Math.min(days.length - 1, Math.max(0, (i ?? days.length - 1) + (e.key === 'ArrowLeft' ? -1 : 1))));
+    setAt((i) => Math.min(marks.length - 1, Math.max(0, (i ?? marks.length - 1) + (e.key === 'ArrowLeft' ? -1 : 1))));
   };
+  useEffect(() => setAt(null), [range]);
   return (
     <div className="bar-wrap">
       <div
-        className="bar"
+        className={marks.length > 100 ? 'bar bar-dense' : 'bar'}
         role="group"
         tabIndex={0}
-        aria-label={t.barLabel(service.name, days.length, bad)}
+        aria-label={t.barLabel(service.name, t.span[range](days), bad)}
         onKeyDown={move}
-        onFocus={() => setAt((i) => i ?? days.length - 1)}
+        onFocus={() => setAt((i) => i ?? marks.length - 1)}
         onBlur={() => setAt(null)}
         onPointerLeave={() => setAt(null)}
       >
-        {days.map((d, i) => (
-          <i key={d.date} className={`cell cell-${dayKind(d)}${at === i ? ' cell-at' : ''}`} onPointerEnter={() => setAt(i)} onPointerDown={() => setAt(i)} />
+        {marks.map((m, i) => (
+          <i key={m.key} className={`cell cell-${markKind(m)}${at === i ? ' cell-at' : ''}`} onPointerEnter={() => setAt(i)} onPointerDown={() => setAt(i)} />
         ))}
       </div>
-      {day && at !== null && (
-        <p className="tip" role="status" style={{ '--at': (at + 0.5) / days.length } as React.CSSProperties}>
-          <strong>{f.day(day.date)}</strong>
-          {day.uptime === null ? t.dayNone : day.downMin < NOTICEABLE ? t.dayFull : t.dayDown(f.percent(day.uptime), f.duration(day.downMin))}
+      {mark && at !== null && (
+        <p className="tip" role="status" style={{ '--at': (at + 0.5) / marks.length } as React.CSSProperties}>
+          <strong>{f.mark(mark)}</strong>
+          {mark.uptime === null ? (mark.hourly || mark.from !== mark.to ? t.spanNone : t.dayNone) : mark.downMin < NOTICEABLE ? t.dayFull : t.dayDown(f.percent(mark.uptime), f.duration(mark.downMin))}
         </p>
       )}
       <p className="bar-ends" aria-hidden>
-        <span>{t.daysAgo(days.length)}</span>
-        <span>{t.today}</span>
+        <span>{t.ago(t.span[range](days))}</span>
+        <span>{range === 'day' || range === 'week' ? t.now : t.today}</span>
       </p>
     </div>
   );
 }
 
-function ServiceRow({ service, shown, t, f }: { service: Service; shown: number; t: Copy; f: Format }) {
-  const days = service.history.slice(-shown);
-  const uptime = service.uptime.all;
+function ServiceRow({ service, range, days, narrow, t, f }: { service: Service; range: Range; days: number; narrow: boolean; t: Copy; f: Format }) {
+  const marks = useMemo(() => marksOf(service, range, narrow), [service, range, narrow]);
+  const uptime = service.uptime[UPTIME_KEY[range]];
   return (
     <li className="service">
       <div className="service-head">
@@ -240,10 +305,10 @@ function ServiceRow({ service, shown, t, f }: { service: Service; shown: number;
             <Glyph state={service.state} />
             {t.state[service.state]}
           </p>
-          <p className="uptime">{uptime === null || uptime === undefined ? t.noUptime : t.uptimeOver(f.percent(uptime), service.history.length)}</p>
+          <p className="uptime">{uptime === null || uptime === undefined ? t.noUptime : t.uptimeOver(f.percent(uptime), t.span[range](days))}</p>
         </div>
       </div>
-      <Bar service={service} days={days} t={t} f={f} />
+      <Bar service={service} marks={marks} range={range} days={days} t={t} f={f} />
     </li>
   );
 }
@@ -296,6 +361,7 @@ export function App() {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [status, setStatus] = useState<Status | null>(null);
   const [lost, setLost] = useState(false);
+  const [range, setRange] = useState<Range>(initialRange);
   const [now, setNow] = useState(() => Date.now());
   const t = copy[lang];
   const f = useFormat(lang, t);
@@ -335,6 +401,11 @@ export function App() {
     rememberLang(next);
   };
 
+  const switchRange = (next: Range) => {
+    setRange(next);
+    rememberRange(next);
+  };
+
   // Without an answer from the server the last known state cannot be trusted.
   const overall: Overall = !status || lost ? 'unknown' : status.state;
   const down = status?.services.filter((s) => s.state === 'down').length ?? 0;
@@ -352,7 +423,9 @@ export function App() {
             : t.headline.several(down)
           : t.headline.unknown;
   const reading = lost ? t.unreachable : !status ? '' : !status.readAt ? t.never : status.stale ? t.staleSince(f.ago(status.readAt, now)) : t.readAgo(f.ago(status.readAt, now));
-  const shownDays = status ? (narrow ? Math.min(45, status.days) : status.days) : 0;
+  // A month is only a choice of its own when more than that is kept.
+  const ranges = (['day', 'week', 'month', 'all'] as const).filter((r) => r !== 'month' || (status?.days ?? 0) > 30);
+  const shownRange = ranges.includes(range) ? range : 'all';
 
   return (
     <>
@@ -400,10 +473,19 @@ export function App() {
 
         {status && (
           <section aria-labelledby="services">
-            <h2 id="services">{t.services}</h2>
+            <div className="section-head">
+              <h2 id="services">{t.services}</h2>
+              <div className="ranges" role="group" aria-label={t.rangeLabel}>
+                {ranges.map((r) => (
+                  <button key={r} aria-pressed={r === shownRange} aria-label={t.span[r](status.days)} onClick={() => switchRange(r)}>
+                    {t.spanShort[r](status.days)}
+                  </button>
+                ))}
+              </div>
+            </div>
             <ul className="services">
               {status.services.map((s) => (
-                <ServiceRow key={s.id} service={s} shown={shownDays} t={t} f={f} />
+                <ServiceRow key={s.id} service={s} range={shownRange} days={status.days} narrow={narrow} t={t} f={f} />
               ))}
             </ul>
             <ul className="legend" aria-hidden>
