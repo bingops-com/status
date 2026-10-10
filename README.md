@@ -1,12 +1,12 @@
 # status
 
 Page d'état publique de `lab.bingo` : pour chaque service exposé sur Internet,
-elle dit s'il répond, sa disponibilité jour par jour et la liste des
-interruptions relevées.
+elle dit s'il répond, sa disponibilité heure par heure sur la semaine et jour
+par jour au-delà, et la liste des interruptions relevées.
 
 Un binaire Go sert l'API et l'interface React embarquée. Il ne sonde rien
 lui-même : il lit les vérifications faites par [Gatus](https://gatus.io), en
-garde un historique par jour et transforme les séries d'échecs en incidents.
+garde un historique par jour, et par heure sur la dernière semaine, et transforme les séries d'échecs en incidents.
 
 ## Ce que la page montre, et ce qu'elle ne montre pas
 
@@ -27,6 +27,9 @@ fois, même si deux lectures la contiennent.
 
 - **Disponibilité** : part des vérifications réussies, par jour (dans le fuseau
   `timezone`) et sur l'ensemble des jours conservés (`days`, 90 par défaut).
+  Les 7 derniers jours sont aussi comptés par heure. Un historique écrit avant
+  ce décompte n'a pas d'heures : la vue par heure se remplit à partir du
+  déploiement.
 - **Incident** : ouvert après `failureThreshold` échecs consécutifs (2 par
   défaut, pour qu'une réponse lente isolée ne compte pas), daté du premier
   échec de la série, fermé par la première réussite.
@@ -77,8 +80,9 @@ Le mode démonstration n'écrit jamais dans `STATUS_DATA` et la page l'annonce.
 
 ## API
 
-- `GET /api/status` : état global, services (état, disponibilité, historique
-  par jour), incidents et annonces. Mis en cache 15 s.
+- `GET /api/status` : état global, services (état, disponibilité sur 1, 7, 30
+  jours et sur tout l'historique, historique par jour, et par heure sur la
+  semaine), incidents et annonces. Mis en cache 15 s.
 - `GET /healthz` : `ok`.
 
 ## Aperçu de lien
@@ -86,8 +90,20 @@ Le mode démonstration n'écrit jamais dans `STATUS_DATA` et la page l'annonce.
 Un lien vers la page collé dans Discord (ou tout service qui lit les balises
 Open Graph) affiche l'état du moment : le serveur écrit dans l'en-tête HTML un
 titre (`🟢 Tous les services sont opérationnels`, `🟠 1 service perturbé`,
-`🔴 Tous les services sont en panne`, `⚪ État inconnu`), une pastille par
-service, puis l'incident en cours ou la disponibilité moyenne. Pour le robot
+`🔴 Tous les services sont en panne`, `⚪ État inconnu`), puis une ligne par
+service et une légende :
+
+```
+🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟧  RomM · 99,73 % · ne répond pas
+7 derniers jours · incident en cours depuis 12:17
+```
+
+Les carrés reprennent les marques de la page (vert sans interruption, orange
+moins de 30 minutes, rouge au-delà, blanc sans mesure), regroupées pour tenir
+sur une ligne : 12 carrés de 2 h pour la journée, 14 de 12 h pour la semaine,
+15 pour 30 jours ou tout l'historique. La période est celle du lien :
+`?range=day`, `week` (par défaut), `month` ou `all`, que la page écrit dans
+son adresse quand on change de période. Pour le robot
 de Discord, `theme-color` prend la couleur de l'état, qui devient celle de la
 barre de l'aperçu ; les navigateurs gardent le bleu de la page.
 
@@ -110,9 +126,10 @@ univers maritime teinté de piraterie
 (`.agents/skills/labops-art-direction/SKILL.md`). Un bandeau de mer porte
 l'état général en une phrase ; sa houle est l'état du lab, presque plate quand
 tout répond, plus creusée quand des services ne répondent plus. Dessous, un
-relevé sans cartes : une ligne par service avec une marque par jour, pleine
-hauteur en bleu pour un jour sans interruption, plus courte et colorée sinon,
-puis le journal de bord des interruptions. Le chat du lab, cache-œil compris,
+relevé sans cartes : une ligne par service avec une marque par heure ou par
+jour selon la période choisie (24 heures, 7 jours, 30 jours ou tout
+l'historique), pleine hauteur en bleu sans interruption, plus courte et
+colorée sinon, puis le journal de bord des interruptions. Le chat du lab, cache-œil compris,
 regarde par un hublot dans le pied de page. Le texte existe en français et en
 anglais, selon la langue du navigateur ; tout se fige si le système demande de
 réduire les animations.

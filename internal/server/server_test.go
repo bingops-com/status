@@ -95,19 +95,22 @@ func TestPageCarriesLinkPreview(t *testing.T) {
   </head><body>page</body></html>`)}},
 		Now: func() time.Time { return now },
 	}
+	path := "/"
 	get := func(agent string) string {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("User-Agent", agent)
 		res := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(res, req)
 		return res.Body.String()
 	}
 
+	empty := strings.Repeat("⬜", 13)
 	page := get("Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)")
 	for _, want := range []string{
 		`og:site_name" content="lab.bingo"`,
 		`og:title" content="🟢 Tous les services sont opérationnels"`,
-		"🟢 Authentik   🟢 Rom&lt;M&gt;\nDisponibilité sur 90 jours : 100,00 %",
+		// One reading: only the last square of the week is measured.
+		empty + "🟩  Authentik · 100,00 %\n" + empty + "🟩  Rom&lt;M&gt; · 100,00 %\n7 derniers jours\"",
 		`theme-color" content="#2FB56A"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -124,7 +127,7 @@ func TestPageCarriesLinkPreview(t *testing.T) {
 	page = get("Discordbot/2.0")
 	for _, want := range []string{
 		`og:title" content="🟠 1 service perturbé"`,
-		"🟢 Authentik   🔴 Rom&lt;M&gt;\nIncident en cours depuis 22:31",
+		empty + "🟩  Authentik · 100,00 %\n" + empty + "🟧  Rom&lt;M&gt; · 33,33 % · ne répond pas\n7 derniers jours · incident en cours depuis 22:31",
 		`theme-color" content="#F0A020"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -132,8 +135,22 @@ func TestPageCarriesLinkPreview(t *testing.T) {
 		}
 	}
 
+	// The range of the link decides the span of the bars.
+	for query, want := range map[string]string{
+		"?range=day":   strings.Repeat("⬜", 11) + "🟧  Rom&lt;M&gt; · 33,33 % · ne répond pas\n24 dernières heures · ",
+		"?range=month": strings.Repeat("⬜", 14) + "🟧  Rom&lt;M&gt; · 33,33 % · ne répond pas\n30 derniers jours · ",
+		"?range=all":   strings.Repeat("⬜", 14) + "🟧  Rom&lt;M&gt; · 33,33 % · ne répond pas\n90 derniers jours · ",
+		"?range=never": empty + "🟧  Rom&lt;M&gt; · 33,33 % · ne répond pas\n7 derniers jours · ",
+	} {
+		path = "/" + query
+		if page = get("Discordbot/2.0"); !strings.Contains(page, want) {
+			t.Fatalf("preview of %s lacks %q:\n%s", query, want, page)
+		}
+	}
+	path = "/"
+
 	now = now.Add(time.Hour)
-	if page = get("Discordbot/2.0"); !strings.Contains(page, `og:title" content="⚪ État inconnu"`) || !strings.Contains(page, "Aucune mesure récente") {
+	if page = get("Discordbot/2.0"); !strings.Contains(page, `og:title" content="⚪ État inconnu"`) || !strings.Contains(page, "7 derniers jours · aucune mesure récente") {
 		t.Fatalf("stale readings must not claim a state:\n%s", page)
 	}
 }

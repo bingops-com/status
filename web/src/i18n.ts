@@ -1,6 +1,8 @@
 // Interface copy, in French and in English. Functional text is plain; the
 // maritime world shows in names such as the logbook, never in instructions.
 export type Lang = 'fr' | 'en';
+// The period the bars cover: a day and a week by the hour, more by the day.
+export type Range = 'day' | 'week' | 'month' | 'all';
 
 const fr = {
   pageTitle: 'État des services',
@@ -21,16 +23,21 @@ const fr = {
   demo: 'Données de démonstration : cet historique est inventé.',
   services: 'Services',
   state: { up: 'Répond', down: 'Ne répond pas', unknown: 'État inconnu' },
-  uptimeOver: (pct: string, days: number) => `${pct} sur ${days} jours`,
+  rangeLabel: 'Période affichée',
+  span: { day: () => '24 heures', week: () => '7 jours', month: () => '30 jours', all: (days: number) => `${days} jours` } as Record<Range, (days: number) => string>,
+  spanShort: { day: () => '24 h', week: () => '7 j', month: () => '30 j', all: (days: number) => `${days} j` } as Record<Range, (days: number) => string>,
+  uptimeOver: (pct: string, span: string) => `${pct} sur ${span}`,
   noUptime: 'Pas encore mesuré',
   respondsIn: (ms: number) => `Répond en ${ms} ms`,
-  daysAgo: (n: number) => `Il y a ${n} jours`,
+  ago: (span: string) => `Il y a ${span}`,
   today: "Aujourd'hui",
-  barLabel: (name: string, days: number, bad: number) =>
-    `${name} : disponibilité jour par jour sur ${days} jours, ${bad === 0 ? 'sans interruption' : bad === 1 ? 'un jour avec interruption' : `${bad} jours avec interruption`}. Flèches gauche et droite pour lire un jour.`,
+  now: 'Maintenant',
+  barLabel: (name: string, span: string, bad: number) =>
+    `${name} : disponibilité sur ${span}, ${bad === 0 ? 'sans interruption' : bad === 1 ? 'une période avec interruption' : `${bad} périodes avec interruption`}. Flèches gauche et droite pour lire une période.`,
   dayFull: 'Aucune interruption',
   dayDown: (pct: string, min: string) => `${pct} de disponibilité, environ ${min} d'interruption`,
   dayNone: 'Pas de mesure ce jour-là',
+  spanNone: 'Pas de mesure sur cette période',
   legend: { ok: 'Sans interruption', brief: "Moins de 30 min d'interruption", long: '30 min ou plus', none: 'Pas de mesure' },
   logbook: 'Journal de bord',
   logbookLead: (days: number) => `Les interruptions relevées sur les ${days} derniers jours.`,
@@ -68,16 +75,21 @@ const en: typeof fr = {
   demo: 'Demonstration data: this history is made up.',
   services: 'Services',
   state: { up: 'Responding', down: 'Not responding', unknown: 'State unknown' },
-  uptimeOver: (pct, days) => `${pct} over ${days} days`,
+  rangeLabel: 'Period shown',
+  span: { day: () => '24 hours', week: () => '7 days', month: () => '30 days', all: (days) => `${days} days` },
+  spanShort: { day: () => '24 h', week: () => '7 d', month: () => '30 d', all: (days) => `${days} d` },
+  uptimeOver: (pct, span) => `${pct} over ${span}`,
   noUptime: 'Not measured yet',
   respondsIn: (ms) => `Responds in ${ms} ms`,
-  daysAgo: (n) => `${n} days ago`,
+  ago: (span) => `${span} ago`,
   today: 'Today',
-  barLabel: (name, days, bad) =>
-    `${name}: availability day by day over ${days} days, ${bad === 0 ? 'no interruption' : bad === 1 ? 'one day with an interruption' : `${bad} days with an interruption`}. Left and right arrows read a day.`,
+  now: 'Now',
+  barLabel: (name, span, bad) =>
+    `${name}: availability over ${span}, ${bad === 0 ? 'no interruption' : bad === 1 ? 'one period with an interruption' : `${bad} periods with an interruption`}. Left and right arrows read a period.`,
   dayFull: 'No interruption',
   dayDown: (pct, min) => `${pct} available, about ${min} of interruption`,
   dayNone: 'No measurement that day',
+  spanNone: 'No measurement over that period',
   legend: { ok: 'No interruption', brief: 'Less than 30 min of interruption', long: '30 min or more', none: 'No measurement' },
   logbook: 'Logbook',
   logbookLead: (days) => `Interruptions recorded over the last ${days} days.`,

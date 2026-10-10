@@ -42,6 +42,7 @@ type service struct {
 	FailStart time.Time       `json:"failStart"`
 	Open      int             `json:"open,omitempty"`
 	Days      map[string]*day `json:"days"`
+	Hours     map[string]*day `json:"hours,omitempty"`
 }
 
 // Incident is a period during which a service kept failing its checks.
@@ -69,6 +70,13 @@ type Options struct {
 	FailureThreshold int
 	Interval         time.Duration
 }
+
+// Hours are kept for a week, for the short views; days for the whole history.
+// They are keyed in UTC, where no hour is skipped or repeated.
+const (
+	hoursKept = 7 * 24
+	hourKey   = "2006-01-02T15"
+)
 
 // Recorder accumulates checks. It is safe for concurrent use.
 type Recorder struct {
@@ -143,10 +151,22 @@ func (r *Recorder) add(key string, s *service, c Check) {
 		d = &day{}
 		s.Days[k] = d
 	}
+	if s.Hours == nil {
+		s.Hours = map[string]*day{}
+	}
+	hk := c.Time.UTC().Format(hourKey)
+	h := s.Hours[hk]
+	if h == nil {
+		h = &day{}
+		s.Hours[hk] = h
+	}
 	d.Checks++
+	h.Checks++
 	if c.Up {
 		d.Up++
 		d.Ms += int64(c.Ms)
+		h.Up++
+		h.Ms += int64(c.Ms)
 		s.Fails = 0
 		if s.Open != 0 {
 			end := c.Time
@@ -181,10 +201,16 @@ func (r *Recorder) incident(id int) *Incident {
 // prune drops what is older than the history kept.
 func (r *Recorder) prune(now time.Time) {
 	first := r.dayKey(now, r.opts.Days-1)
+	firstHour := hourStart(now, hoursKept-1).Format(hourKey)
 	for _, s := range r.st.Services {
 		for k := range s.Days {
 			if k < first {
 				delete(s.Days, k)
+			}
+		}
+		for k := range s.Hours {
+			if k < firstHour {
+				delete(s.Hours, k)
 			}
 		}
 	}
@@ -200,6 +226,11 @@ func (r *Recorder) prune(now time.Time) {
 // dayKey is the date `back` days before now, in the configured timezone.
 func (r *Recorder) dayKey(now time.Time, back int) string {
 	return now.In(r.opts.Location).AddDate(0, 0, -back).Format(time.DateOnly)
+}
+
+// hourStart is the beginning of the hour `back` hours before now.
+func hourStart(now time.Time, back int) time.Time {
+	return now.UTC().Truncate(time.Hour).Add(-time.Duration(back) * time.Hour)
 }
 
 // Save writes the history to its file, replacing it in one step.
@@ -232,13 +263,21 @@ type DayView struct {
 	DownMin int      `json:"downMin"`
 }
 
+// HourView is one hour of a service, starting at Time.
+type HourView struct {
+	Time    time.Time `json:"time"`
+	Uptime  *float64  `json:"uptime"`
+	DownMin int       `json:"downMin"`
+}
+
 type ServiceView struct {
 	ID         string              `json:"id"`
 	Name       string              `json:"name"`
 	State      string              `json:"state"` // up, down, unknown
 	ResponseMs int                 `json:"responseMs"`
-	Uptime     map[string]*float64 `json:"uptime"` // over 7, 30 and all days kept
+	Uptime     map[string]*float64 `json:"uptime"` // over 1, 7, 30 and all days kept
 	History    []DayView           `json:"history"`
+	Hours      []HourView          `json:"hours"` // the last week
 }
 
 type IncidentView struct {
@@ -315,6 +354,26 @@ func (r *Recorder) Snapshot(now time.Time) Snapshot {
 			} else {
 				v.Uptime[name] = nil
 			}
+		}
+		dayChecks, dayUps := 0, 0
+		for back := hoursKept - 1; back >= 0; back-- {
+			t := hourStart(now, back)
+			hv := HourView{Time: t}
+			if h := s.Hours[t.Format(hourKey)]; h != nil && h.Checks > 0 {
+				ratio := float64(h.Up) / float64(h.Checks)
+				hv.Uptime = &ratio
+				hv.DownMin = int(float64(h.Checks-h.Up)*r.opts.Interval.Minutes() + 0.5)
+				if back < 24 {
+					dayChecks += h.Checks
+					dayUps += h.Up
+				}
+			}
+			v.Hours = append(v.Hours, hv)
+		}
+		v.Uptime["1"] = nil
+		if dayChecks > 0 {
+			ratio := float64(dayUps) / float64(dayChecks)
+			v.Uptime["1"] = &ratio
 		}
 		snap.Services = append(snap.Services, v)
 	}

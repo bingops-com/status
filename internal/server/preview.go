@@ -13,19 +13,116 @@ import (
 // Link previews (Discord, Slack, ...) only read the HTML head and never run
 // the page's script, so the current state is written there for them.
 
-var previewMarks = map[string]string{"up": "🟢", "down": "🔴", "unknown": "⚪"}
+// A square of the bar follows the day marks of the page: green without a
+// noticeable interruption, orange under half an hour, red beyond, white when
+// nothing was measured.
+const (
+	noticeableMin = 2
+	longMin       = 30
+)
+
+// span is a period a link preview can show: its bar has `squares` squares,
+// read from the hours of the last week or from the days kept.
+type span struct {
+	uptime  string // key of ServiceView.Uptime
+	hours   int    // read that many hours; 0 reads days
+	days    int    // read that many days; 0 reads all of them
+	squares int
+	caption string
+}
+
+// The page's ?range= picks the span, so that a shared link previews what its
+// sender was looking at. The week is the default, as on the page.
+var spans = map[string]span{
+	"day":   {uptime: "1", hours: 24, squares: 12, caption: "24 dernières heures"},
+	"week":  {uptime: "7", hours: 7 * 24, squares: 14, caption: "7 derniers jours"},
+	"month": {uptime: "30", days: 30, squares: 15, caption: "30 derniers jours"},
+	"all":   {uptime: "all", squares: 15},
+}
+
+func spanOf(name string, days int) span {
+	sp, ok := spans[name]
+	if !ok {
+		sp = spans["week"]
+	}
+	if sp.hours == 0 && (sp.days == 0 || sp.days >= days) {
+		sp = spans["all"]
+		sp.caption = fmt.Sprintf("%d derniers jours", days)
+	}
+	return sp
+}
+
+// measure is the uptime and the minutes lost of one hour or one day.
+type measure struct {
+	uptime  *float64
+	downMin int
+}
+
+func measures(s monitor.ServiceView, sp span) []measure {
+	out := []measure{}
+	if sp.hours > 0 {
+		for _, h := range s.Hours[max(0, len(s.Hours)-sp.hours):] {
+			out = append(out, measure{h.Uptime, h.DownMin})
+		}
+		return out
+	}
+	history := s.History
+	if sp.days > 0 {
+		history = history[max(0, len(history)-sp.days):]
+	}
+	for _, d := range history {
+		out = append(out, measure{d.Uptime, d.DownMin})
+	}
+	return out
+}
+
+// bar draws the measures as n squares, oldest first, each one covering the
+// same share of them.
+func bar(ms []measure, n int) string {
+	n = min(n, len(ms))
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		measured, downMin := false, 0
+		for _, m := range ms[i*len(ms)/n : (i+1)*len(ms)/n] {
+			if m.uptime != nil {
+				measured = true
+				downMin += m.downMin
+			}
+		}
+		switch {
+		case !measured:
+			b.WriteString("⬜")
+		case downMin < noticeableMin:
+			b.WriteString("🟩")
+		case downMin < longMin:
+			b.WriteString("🟧")
+		default:
+			b.WriteString("🟥")
+		}
+	}
+	return b.String()
+}
 
 // preview summarises a snapshot for a link preview: a title carrying the
-// overall state, one mark per service, then the open incident or the
-// availability, and the colour of the state.
-func preview(snap monitor.Snapshot, loc *time.Location, now time.Time) (title, description, colour string) {
+// overall state, then for each service its bar and availability over the
+// span, the open incident if any, and the colour of the state. The bar comes
+// first on its line: the names have no fixed width to align it after them.
+func preview(snap monitor.Snapshot, sp span, loc *time.Location, now time.Time) (title, description, colour string) {
 	down := 0
-	marks := make([]string, 0, len(snap.Services))
+	lines := []string{}
 	for _, s := range snap.Services {
+		line := s.Name
+		if b := bar(measures(s, sp), sp.squares); b != "" {
+			line = b + "  " + line
+		}
+		if u := s.Uptime[sp.uptime]; u != nil {
+			line += " · " + percent(*u)
+		}
 		if s.State == "down" {
 			down++
+			line += " · ne répond pas"
 		}
-		marks = append(marks, previewMarks[s.State]+" "+s.Name)
+		lines = append(lines, line)
 	}
 	switch snap.State {
 	case "ok":
@@ -41,25 +138,19 @@ func preview(snap monitor.Snapshot, loc *time.Location, now time.Time) (title, d
 		title, colour = "⚪ État inconnu", "#8690A3"
 	}
 
-	lines := []string{}
-	if len(marks) > 0 {
-		lines = append(lines, strings.Join(marks, "   "))
-	}
+	foot := sp.caption
 	switch {
 	case snap.State == "unknown":
-		lines = append(lines, "Aucune mesure récente")
+		foot += " · aucune mesure récente"
 	case openSince(snap) != nil:
 		start := openSince(snap).In(loc)
 		layout := "15:04"
 		if start.Format(time.DateOnly) != now.In(loc).Format(time.DateOnly) {
 			layout = "le 02/01 à 15:04"
 		}
-		lines = append(lines, "Incident en cours depuis "+start.Format(layout))
-	default:
-		if ratio, ok := meanUptime(snap); ok {
-			lines = append(lines, fmt.Sprintf("Disponibilité sur %d jours : %s", snap.Days, percent(ratio)))
-		}
+		foot += " · incident en cours depuis " + start.Format(layout)
 	}
+	lines = append(lines, foot)
 	return title, strings.Join(lines, "\n"), colour
 }
 
@@ -75,20 +166,6 @@ func openSince(snap monitor.Snapshot) *time.Time {
 	return start
 }
 
-func meanUptime(snap monitor.Snapshot) (float64, bool) {
-	sum, n := 0.0, 0
-	for _, s := range snap.Services {
-		if u := s.Uptime["all"]; u != nil {
-			sum += *u
-			n++
-		}
-	}
-	if n == 0 {
-		return 0, false
-	}
-	return sum / float64(n), true
-}
-
 // percent writes a ratio as the page does: two decimals, and never 100 %
 // unless nothing was missed.
 func percent(ratio float64) string {
@@ -102,8 +179,9 @@ const themeColour = `<meta name="theme-color" content="#1443D6" />`
 
 // withPreview adds the preview tags to the page's head. Discord takes the
 // colour of its embed from theme-color; browsers keep the page's own.
-func (s *Server) withPreview(page []byte, userAgent string) []byte {
-	title, description, colour := preview(s.Recorder.Snapshot(s.now()), s.location(), s.now())
+func (s *Server) withPreview(page []byte, userAgent, shown string) []byte {
+	snap := s.Recorder.Snapshot(s.now())
+	title, description, colour := preview(snap, spanOf(shown, snap.Days), s.location(), s.now())
 	tags := fmt.Sprintf(`<meta property="og:type" content="website" />
     <meta property="og:locale" content="fr_FR" />
     <meta property="og:site_name" content="%s" />
