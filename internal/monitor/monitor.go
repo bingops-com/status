@@ -80,9 +80,11 @@ const (
 
 // Recorder accumulates checks. It is safe for concurrent use.
 type Recorder struct {
-	mu   sync.Mutex
-	opts Options
-	st   state
+	mu            sync.Mutex
+	saveMu        sync.Mutex
+	opts          Options
+	st            state
+	recoveredPath string
 }
 
 func NewRecorder(opts Options) (*Recorder, error) {
@@ -97,16 +99,86 @@ func NewRecorder(opts Options) (*Recorder, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(raw, &r.st); err != nil {
-		return nil, fmt.Errorf("%s: %w", opts.Path, err)
+	var loaded *state
+	err = json.Unmarshal(raw, &loaded)
+	if err == nil {
+		err = normalizeHistory(loaded)
 	}
-	if r.st.Services == nil {
-		r.st.Services = map[string]*service{}
+	if err != nil {
+		backup, preserveErr := quarantineHistory(opts.Path)
+		if preserveErr != nil {
+			return nil, fmt.Errorf("invalid history (%v); cannot preserve %s: %w", err, opts.Path, preserveErr)
+		}
+		r.recoveredPath = backup
+		return r, nil
 	}
-	if r.st.NextID < 1 {
-		r.st.NextID = 1
-	}
+	r.st = *loaded
 	return r, nil
+}
+
+// RecoveredHistory names the invalid history preserved at startup, if any.
+// It is immutable and never contains the file's contents.
+func (r *Recorder) RecoveredHistory() string { return r.recoveredPath }
+
+func normalizeHistory(st *state) error {
+	if st == nil {
+		return fmt.Errorf("history must be a JSON object, not null")
+	}
+	if st.Services == nil {
+		st.Services = map[string]*service{}
+	}
+	if st.NextID < 1 {
+		st.NextID = 1
+	}
+	for _, s := range st.Services {
+		if s == nil {
+			return fmt.Errorf("history contains a null service")
+		}
+		// Older histories can omit these counters; initialize before recording.
+		if s.Days == nil {
+			s.Days = map[string]*day{}
+		}
+		if s.Hours == nil {
+			s.Hours = map[string]*day{}
+		}
+	}
+	for _, in := range st.Incidents {
+		if in == nil {
+			return fmt.Errorf("history contains a null incident")
+		}
+	}
+	return nil
+}
+
+// Keep the exact corrupt bytes on the same volume, without replacing an
+// earlier recovery file. If preservation fails, startup must still fail.
+func quarantineHistory(path string) (string, error) {
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".corrupt-*")
+	if err != nil {
+		return "", err
+	}
+	backup := f.Name()
+	if err := f.Close(); err != nil {
+		os.Remove(backup)
+		return "", err
+	}
+	if err := os.Rename(path, backup); err != nil {
+		os.Remove(backup)
+		return "", err
+	}
+	if err := syncDirectory(filepath.Dir(path)); err != nil {
+		return "", err
+	}
+	return backup, nil
+}
+
+func syncDirectory(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 // Empty reports whether nothing has been recorded yet.
@@ -238,6 +310,10 @@ func (r *Recorder) Save() error {
 	if r.opts.Path == "" {
 		return nil
 	}
+	// Serialize snapshot + replacement: concurrent saves must not truncate a
+	// shared temporary file or replace newer history with an older snapshot.
+	r.saveMu.Lock()
+	defer r.saveMu.Unlock()
 	r.mu.Lock()
 	raw, err := json.Marshal(r.st)
 	r.mu.Unlock()
@@ -247,11 +323,27 @@ func (r *Recorder) Save() error {
 	if err := os.MkdirAll(filepath.Dir(r.opts.Path), 0o755); err != nil {
 		return err
 	}
-	tmp := r.opts.Path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(r.opts.Path), filepath.Base(r.opts.Path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, r.opts.Path)
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if _, err := f.Write(raw); err != nil {
+		return err
+	}
+	// Persist the file before publishing it, then persist the directory entry.
+	// Rename alone is atomic but does not make data durable across a host crash.
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(f.Name(), r.opts.Path); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(r.opts.Path))
 }
 
 // --- What visitors see ----------------------------------------------------

@@ -49,6 +49,9 @@ func main() {
 		slog.Error("unreadable history", "error", err)
 		os.Exit(1)
 	}
+	if path := rec.RecoveredHistory(); path != "" {
+		slog.Warn("invalid history preserved; restarting without past measurements", "path", path)
+	}
 
 	var src monitor.Source = &monitor.Gatus{URL: cfg.Gatus, Groups: cfg.Groups}
 	if demo {
