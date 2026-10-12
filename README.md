@@ -42,6 +42,53 @@ Le perdre remet les chiffres à zéro ; rien d'autre n'en dépend. La page ne
 remonte pas plus loin que son propre historique : au premier démarrage, les
 jours passés sont « sans mesure ».
 
+### Reprise après un historique illisible
+
+L'historique est un état généré localement, non sauvegardé, sans identifiant
+secret. Un fichier JSON vide, tronqué ou invalide ne bloque plus la page : au
+démarrage, il est déplacé sur le même volume vers
+`$STATUS_DATA/history.json.corrupt-<suffixe unique>`, sans écraser une archive
+existante. Un avertissement indique uniquement le chemin conservé. La page
+charge la copie de secours `history.json.bak` et répare le fichier principal
+avant de servir les mesures. Si aucun fichier valide ne subsiste, la page
+redémarre sans mesures passées, avec un état « inconnu » jusqu'à la prochaine
+lecture réussie de Gatus. Une copie de secours invalide est elle aussi
+conservée sous un nom unique. Aucun chiffre historique n'est inventé.
+
+Le fichier défectueux est conservé tel quel pour permettre à l'opérateur LabOps
+d'en tenter la récupération hors ligne ; il n'est ni envoyé aux visiteurs ni
+commité. Une nouvelle relance sans `history.json` est sûre, même avant la
+première lecture. Un historique valide, y compris ancien sans compteurs
+horaires, reste chargé normalement. Les erreurs de lecture, de permissions,
+de stockage ou d'archivage restent bloquantes : elles ne déclenchent pas une
+remise à zéro silencieuse.
+
+Les nouvelles sauvegardes utilisent un fichier temporaire unique, synchronisé
+sur disque avant remplacement atomique, puis une synchronisation du répertoire.
+Une copie `history.json.bak` est ensuite actualisée de la même manière.
+Les sauvegardes concurrentes d'une même instance sont sérialisées. Conserver
+une seule instance qui écrit sur le volume (`Recreate` dans LabOps).
+
+La récupération appartient à l'image du serveur, pas à une manipulation du
+PVC : fusionner la PR source construit une image et ouvre la PR de déploiement
+LabOps ; seule la fusion de cette dernière déploie le correctif. Ne pas supprimer
+le PVC ni effacer `history.json` pour débloquer le démarrage.
+
+Après déploiement, ces contrôles publics en lecture seule ne révèlent aucun
+contenu du volume :
+
+```sh
+curl -fsS https://status.lab.bingo/healthz
+curl -fsS https://status.lab.bingo/api/status
+```
+
+Vérifier que la page est disponible et que les mesures reprennent après un
+intervalle de lecture. Les archives restent sur le PVC et ne sont pas
+sauvegardées hors du volume : perdre ce volume perd aussi ces sources de
+récupération et la copie `history.json.bak`. L'opérateur surveille leur taille ;
+aucune archive de corruption n'est supprimée automatiquement. Le système de
+fichiers doit prendre en charge la synchronisation des répertoires Linux.
+
 ## Configuration
 
 `config/status.yaml` :
