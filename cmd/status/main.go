@@ -49,8 +49,13 @@ func main() {
 		slog.Error("unreadable history", "error", err)
 		os.Exit(1)
 	}
-	if path := rec.RecoveredHistory(); path != "" {
-		slog.Warn("invalid history preserved; restarting without past measurements", "path", path)
+	for _, path := range rec.RecoveredHistories() {
+		slog.Warn("invalid history preserved", "path", path)
+	}
+	if path := rec.RestoredHistory(); path != "" {
+		slog.Warn("history restored from recovery copy", "path", path)
+	} else if rec.RecoveredHistory() != "" {
+		slog.Warn("restarting without past measurements")
 	}
 
 	var src monitor.Source = &monitor.Gatus{URL: cfg.Gatus, Groups: cfg.Groups}

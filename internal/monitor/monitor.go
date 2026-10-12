@@ -80,11 +80,12 @@ const (
 
 // Recorder accumulates checks. It is safe for concurrent use.
 type Recorder struct {
-	mu            sync.Mutex
-	saveMu        sync.Mutex
-	opts          Options
-	st            state
-	recoveredPath string
+	mu             sync.Mutex
+	saveMu         sync.Mutex
+	opts           Options
+	st             state
+	recoveredPaths []string
+	restoredPath   string
 }
 
 func NewRecorder(opts Options) (*Recorder, error) {
@@ -92,33 +93,54 @@ func NewRecorder(opts Options) (*Recorder, error) {
 	if opts.Path == "" {
 		return r, nil
 	}
-	raw, err := os.ReadFile(opts.Path)
-	if os.IsNotExist(err) {
-		return r, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var loaded *state
-	err = json.Unmarshal(raw, &loaded)
-	if err == nil {
-		err = normalizeHistory(loaded)
-	}
-	if err != nil {
-		backup, preserveErr := quarantineHistory(opts.Path)
-		if preserveErr != nil {
-			return nil, fmt.Errorf("invalid history (%v); cannot preserve %s: %w", err, opts.Path, preserveErr)
+	for _, path := range []string{opts.Path, opts.Path + ".bak"} {
+		raw, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
 		}
-		r.recoveredPath = backup
-		return r, nil
+		if err != nil {
+			return nil, err
+		}
+		var loaded *state
+		err = json.Unmarshal(raw, &loaded)
+		if err == nil {
+			err = normalizeHistory(loaded)
+		}
+		if err != nil {
+			archive, preserveErr := quarantineHistory(path)
+			if preserveErr != nil {
+				return nil, fmt.Errorf("invalid history (%v); cannot preserve %s: %w", err, path, preserveErr)
+			}
+			r.recoveredPaths = append(r.recoveredPaths, archive)
+			continue
+		}
+		r.st = *loaded
+		if path != opts.Path {
+			if err := writeHistory(opts.Path, raw); err != nil {
+				return nil, err
+			}
+			r.restoredPath = path
+		}
+		break
 	}
-	r.st = *loaded
 	return r, nil
 }
 
-// RecoveredHistory names the invalid history preserved at startup, if any.
-// It is immutable and never contains the file's contents.
-func (r *Recorder) RecoveredHistory() string { return r.recoveredPath }
+// RecoveredHistory names the first invalid history preserved at startup, if any.
+func (r *Recorder) RecoveredHistory() string {
+	if len(r.recoveredPaths) == 0 {
+		return ""
+	}
+	return r.recoveredPaths[0]
+}
+
+// RecoveredHistories names every preserved invalid file, without its contents.
+func (r *Recorder) RecoveredHistories() []string {
+	return append([]string(nil), r.recoveredPaths...)
+}
+
+// RestoredHistory names the valid recovery copy used at startup, if any.
+func (r *Recorder) RestoredHistory() string { return r.restoredPath }
 
 func normalizeHistory(st *state) error {
 	if st == nil {
@@ -305,7 +327,7 @@ func hourStart(now time.Time, back int) time.Time {
 	return now.UTC().Truncate(time.Hour).Add(-time.Duration(back) * time.Hour)
 }
 
-// Save writes the history to its file, replacing it in one step.
+// Save durably replaces the history and then refreshes its same-volume backup.
 func (r *Recorder) Save() error {
 	if r.opts.Path == "" {
 		return nil
@@ -320,10 +342,18 @@ func (r *Recorder) Save() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(r.opts.Path), 0o755); err != nil {
+	if err := writeHistory(r.opts.Path, raw); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(r.opts.Path), filepath.Base(r.opts.Path)+".tmp-*")
+	return writeHistory(r.opts.Path+".bak", raw)
+}
+
+// writeHistory publishes only fully synced files and then syncs the directory.
+func writeHistory(path string, raw []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}
@@ -340,10 +370,10 @@ func (r *Recorder) Save() error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(f.Name(), r.opts.Path); err != nil {
+	if err := os.Rename(f.Name(), path); err != nil {
 		return err
 	}
-	return syncDirectory(filepath.Dir(r.opts.Path))
+	return syncDirectory(filepath.Dir(path))
 }
 
 // --- What visitors see ----------------------------------------------------

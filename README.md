@@ -49,8 +49,11 @@ secret. Un fichier JSON vide, tronqué ou invalide ne bloque plus la page : au
 démarrage, il est déplacé sur le même volume vers
 `$STATUS_DATA/history.json.corrupt-<suffixe unique>`, sans écraser une archive
 existante. Un avertissement indique uniquement le chemin conservé. La page
+charge la copie de secours `history.json.bak` et répare le fichier principal
+avant de servir les mesures. Si aucun fichier valide ne subsiste, la page
 redémarre sans mesures passées, avec un état « inconnu » jusqu'à la prochaine
-lecture réussie de Gatus. Aucun chiffre historique n'est inventé.
+lecture réussie de Gatus. Une copie de secours invalide est elle aussi
+conservée sous un nom unique. Aucun chiffre historique n'est inventé.
 
 Le fichier défectueux est conservé tel quel pour permettre à l'opérateur LabOps
 d'en tenter la récupération hors ligne ; il n'est ni envoyé aux visiteurs ni
@@ -62,6 +65,7 @@ remise à zéro silencieuse.
 
 Les nouvelles sauvegardes utilisent un fichier temporaire unique, synchronisé
 sur disque avant remplacement atomique, puis une synchronisation du répertoire.
+Une copie `history.json.bak` est ensuite actualisée de la même manière.
 Les sauvegardes concurrentes d'une même instance sont sérialisées. Conserver
 une seule instance qui écrit sur le volume (`Recreate` dans LabOps).
 
@@ -80,7 +84,10 @@ curl -fsS https://status.lab.bingo/api/status
 
 Vérifier que la page est disponible et que les mesures reprennent après un
 intervalle de lecture. Les archives restent sur le PVC et ne sont pas
-sauvegardées : perdre ce volume perd aussi ces sources de récupération.
+sauvegardées hors du volume : perdre ce volume perd aussi ces sources de
+récupération et la copie `history.json.bak`. L'opérateur surveille leur taille ;
+aucune archive de corruption n'est supprimée automatiquement. Le système de
+fichiers doit prendre en charge la synchronisation des répertoires Linux.
 
 ## Configuration
 
